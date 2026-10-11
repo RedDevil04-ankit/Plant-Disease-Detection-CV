@@ -1,0 +1,408 @@
+PLANT DISEASE PREDICTION USING DEEP LEARNING
+Complete Project Explanation
+Repository: https://github.com/RedDevil04-ankit/Plant-Disease-Detection-CV
+Companion/original version: https://github.com/RedDevil04-ankit/Plant-Disease-Detection
+
+====================================================================
+1. PROJECT OVERVIEW
+====================================================================
+
+This project predicts a plant's disease category from an image of its leaf. It uses image classification with convolutional neural networks (CNNs) and transfer learning. A user uploads a leaf image through a Streamlit web interface; the application preprocesses the image, runs it through one or more trained neural networks, and displays the predicted plant, condition, and model confidence.
+
+The current computer-vision version classifies images into 38 PlantVillage classes, including both diseased and healthy leaves. It also includes a model-comparison experiment involving MobileNetV3Large, MobileNetV2, EfficientNetB0, and DenseNet121.
+
+Important distinction: the repository contains an older application/model for three classes and an expanded computer-vision version for 38 classes. The 38-class app uses the expanded .keras models and class metadata; the old .h5 model is not a 38-class model.
+
+====================================================================
+2. PROBLEM STATEMENT AND OBJECTIVES
+====================================================================
+
+Problem:
+Plant diseases can reduce crop quality and yield. Visual diagnosis can require experience and time. The project explores how computer vision can assist by assigning an uploaded plant-leaf image to one of the disease/healthy categories it has learned.
+
+Objectives:
+- Accept an image of a plant leaf through a simple user interface.
+- Convert the image into a standard format and size for model input.
+- Classify it among the supported plant/disease categories.
+- Compare several deep-learning architectures using a common data split.
+- Show predictions in an accessible Streamlit application.
+- Save model, label mapping, and evaluation artifacts for repeatable inference.
+
+This is an academic prototype, not a replacement for an agricultural expert or laboratory diagnosis.
+
+====================================================================
+3. DATASET
+====================================================================
+
+The expanded project uses the PlantVillage image dataset, specifically its raw/color folder. The training code discovers class names from the subfolder names, rather than relying on a manually typed fixed class list.
+
+The saved project metadata reports:
+- 38 classes.
+- 54,305 images in total.
+- 38,047 training images.
+- 8,129 validation images.
+- 8,129 test images.
+- Random seed: 42.
+- Image dimensions: 128 x 128 pixels.
+- Colour format: RGB.
+
+The classes cover plants such as apple, blueberry, cherry, corn, grape, orange, peach, bell pepper, potato, raspberry, soybean, squash, strawberry, and tomato. Both healthy categories and particular diseases appear in the class labels. The exact class strings are stored in class_names.json.
+
+The dataset is organized by class folders, for example:
+PlantVillage-Dataset/
+  raw/
+    color/
+      Apple___Apple_scab/
+      Apple___Black_rot/
+      Apple___healthy/
+      ...
+Each folder represents one classification label, and contains images belonging to that label.
+
+Dataset split:
+The dataset.py helper shuffles the images within each class and distributes each class's images among training, validation, and test groups. The reported target is approximately 70% training, 15% validation, and 15% test. The exact split counts recorded for this run are 38,047 / 8,129 / 8,129.
+
+Why three splits?
+- Training set: updates model weights.
+- Validation set: guides model selection and early stopping.
+- Test set: provides a final evaluation on images not used to fit the model or choose the preferred model.
+
+The repository also saves a split manifest and image hashes in the comparison workflow to make the compared runs refer to the same image membership.
+
+Limitation:
+PlantVillage contains controlled image conditions. Test accuracy on this dataset does not guarantee the same performance on photographs captured outdoors, under different lighting, with cluttered backgrounds, or on previously unseen varieties.
+
+====================================================================
+4. IMAGE PREPROCESSING
+====================================================================
+
+Before classification, the image must be converted into the shape and numeric representation that the model expects.
+
+The expanded pipeline:
+1. Reads image files and decodes them as three-channel RGB images.
+2. Resizes each image to 128 x 128 pixels.
+3. Batches images to use memory and computation efficiently.
+4. Applies the normalization required by the selected model.
+
+Normalization is important because neural networks expect pixel values in a consistent range. The project keeps preprocessing inside each saved model where appropriate and records the normalization method in its metadata. This reduces the risk of applying different preprocessing during training and inference.
+
+During prediction, main_app.py loads the uploaded image, converts it to RGB, decodes it with TensorFlow, and resizes it according to the saved model metadata. It then runs inference and chooses the class with the largest output score using argmax.
+
+A softmax classifier produces one score per class. The application displays the largest score as a confidence-like percentage. This output is the model's score, not a guarantee that the prediction is correct or a medically/agronomically calibrated probability.
+
+====================================================================
+5. MODEL ARCHITECTURE AND TRANSFER LEARNING
+====================================================================
+
+A convolutional neural network learns visual patterns from images. Early layers often identify basic features such as edges, colours, and textures, while deeper layers combine them into more complex patterns. In leaf images, relevant visual cues may include spots, discolouration, lesions, and texture patterns.
+
+The original simple CNN:
+The historical model uses convolutional layers, max-pooling, flattening, a small dense layer, and a softmax output layer. It is trained from scratch. Its historical 38-class comparison result is about 51.27% test accuracy, so it is retained as a baseline rather than the preferred model.
+
+Transfer learning:
+The expanded comparison uses ImageNet-pretrained feature extractors. These models already contain visual features learned from a large image dataset. Their backbone layers are frozen, and a new classification head learns the plant-disease categories.
+
+The head consists of:
+- Dense layer with 256 units and ReLU activation.
+- Dropout with rate 0.3 to help reduce overfitting.
+- Dense output layer with one output per class and softmax activation.
+
+Why transfer learning?
+Training a deep image model entirely from scratch can require considerable data and computation. A pretrained encoder supplies useful visual representations, allowing the project to train a smaller task-specific head.
+
+====================================================================
+6. MODELS COMPARED
+====================================================================
+
+The repository compares four pretrained architectures on the same 38-class dataset and shared train/validation/test split.
+
+1. MobileNetV3Large
+A mobile-oriented convolutional architecture designed to balance accuracy and computational cost. In this experiment it had the highest validation macro F1, making it the selected model under the project's stated selection rule.
+
+2. MobileNetV2
+A lightweight architecture that uses inverted residual blocks and linear bottlenecks. It is included as a compact baseline for accuracy and inference-cost comparison.
+
+3. EfficientNetB0
+An efficient CNN family model designed to balance model depth, width, and input resolution. Here it uses a frozen pretrained encoder and a trained classification head.
+
+4. DenseNet121
+A densely connected CNN in which layers reuse features from earlier layers. It achieved the highest test accuracy and macro F1 in the recorded comparison, although it was larger and slower than the MobileNet models in the reported CPU experiment.
+
+The models use a common image size of 128 x 128, matching splits and class weights, and up to 30 epochs. The pretrained encoders are frozen for this experiment. As a result, this is a controlled comparison under one training protocol, not a benchmark of every possible configuration or fine-tuning strategy.
+
+====================================================================
+7. TRAINING WORKFLOW
+====================================================================
+
+At a high level, train_model.py performs these steps:
+
+1. Reads command-line configuration such as dataset location, epochs, batch size, image size, and random seed.
+2. Discovers the class folders and the images within each folder.
+3. Creates training, validation, and test splits.
+4. Builds a MobileNetV2-based classifier for the primary expanded model.
+5. Decodes and resizes images using TensorFlow data pipelines.
+6. Uses batches and prefetching so input processing can overlap with model computation.
+7. Extracts features from the frozen pretrained backbone.
+8. Trains the classification head using a multiclass classification loss and an Adam optimizer.
+9. Uses inverse-frequency class weights to give relatively more weight to underrepresented training classes.
+10. Uses validation loss for early stopping and restores the best validation weights.
+11. Evaluates on the held-out test set.
+12. Saves the model and metadata for later inference.
+
+The comparison script applies a related protocol to the four supported architectures and saves individual results and artifacts. Because the backbones and their required normalization differ, model_architectures.py configures the appropriate preprocessing for each architecture.
+
+Loss:
+Sparse categorical cross-entropy is used for integer-encoded multi-class targets. The optimizer updates the trainable classification head to reduce the difference between predicted class scores and the true class.
+
+Class weights:
+Some plant-disease classes have many more images than others. Inverse-frequency class weights make errors on smaller classes count more strongly in the training objective. This can help reduce majority-class dominance, although it does not automatically eliminate class imbalance.
+
+Early stopping:
+The training process monitors validation loss and can stop when it no longer improves. It restores the best checkpoint so the final model is not simply the weights from the last epoch.
+
+====================================================================
+8. EVALUATION METRICS
+====================================================================
+
+Accuracy:
+Number of correct predictions divided by the total number of test images. It gives an overall summary but may hide poorer performance on less common classes.
+
+Precision:
+Among images predicted as a given class, the fraction that actually belong to that class. Lower precision means more false-positive assignments to that class.
+
+Recall:
+Among images that truly belong to a given class, the fraction correctly identified. Lower recall means more examples of that class were missed.
+
+F1 score:
+The harmonic mean of precision and recall. It balances the two and is useful when both false alarms and missed disease classes matter.
+
+Macro F1:
+Calculate F1 separately for each class, then take the unweighted average. Each class contributes equally, which makes this metric useful when class frequencies vary.
+
+Confusion matrix:
+A table comparing true classes with predicted classes. It reveals which categories the model tends to confuse.
+
+Validation macro F1:
+The comparison selects the preferred model using validation macro F1. This is important because using test results for model selection would weaken the test set's role as an independent final evaluation.
+
+====================================================================
+9. RECORDED RESULTS IN THE REPOSITORY
+====================================================================
+
+The saved comparison report contains the following figures for one seeded experiment on 8,129 held-out PlantVillage test images:
+
+Model             Test Accuracy    Test Macro F1    Validation Macro F1
+MobileNetV3Large   97.50%           96.74%           96.84%
+MobileNetV2        96.86%           96.06%           96.10%
+EfficientNetB0     97.44%           96.72%           96.15%
+DenseNet121        97.59%           96.88%           96.70%
+
+According to the comparison report:
+- MobileNetV3Large is preferred by the validation macro F1 selection rule.
+- DenseNet121 has the highest recorded test accuracy and test macro F1.
+- DenseNet121 is larger and slower in the reported CPU experiment.
+- MobileNetV3Large offers a strong balance of performance and speed in this particular run.
+
+Reported model sizes and batch-32 CPU inference timings:
+- MobileNetV3Large: about 13.70 MB; 2.66 ms per image.
+- MobileNetV2: about 10.98 MB; 4.76 ms per image.
+- EfficientNetB0: about 18.40 MB; 7.12 ms per image.
+- DenseNet121: about 30.77 MB; 20.32 ms per image.
+
+These timing figures are specific to the experiment's machine and protocol; they should not be treated as universal benchmark numbers. The report says training time excludes weight downloads, model construction, and some evaluation steps. All results come from one seeded split and controlled PlantVillage images, so they should not be presented as proven real-world farm performance.
+
+====================================================================
+10. STREAMLIT WEB APPLICATION
+====================================================================
+
+Main file: main_app.py
+
+The Streamlit interface has two main views:
+
+A. Predict
+- User uploads a JPG, JPEG, or PNG leaf image.
+- The app displays the uploaded image.
+- It loads the saved model and associated class metadata.
+- It preprocesses the image to the expected dimensions.
+- The image is passed to the four comparison models.
+- The app displays each model's predicted plant, condition, and confidence-like score.
+
+B. Model comparison
+- Reads the stored comparison_results.json.
+- Shows model metrics such as test accuracy, test macro F1, validation macro F1, training time, and model size.
+- Displays the comparison chart when available.
+- Reports which model was preferred by validation macro F1.
+
+The app uses Streamlit's resource cache to avoid reloading the same model unnecessarily. It checks that class metadata and model output dimensions agree, and that the saved image size and preprocessing metadata are compatible. Such checks prevent using a class mapping that does not match the model.
+
+The legacy main_app.py from the older repository is much simpler. It loads plant_disease_model.h5 and has three hard-coded classes:
+- Tomato-Bacterial_spot
+- Potato-Barly blight
+- Corn-Common_rust
+
+That old application only handles JPG uploads and resizes images to 256 x 256. It should not be confused with the expanded 38-class comparison application, whose predictions use the saved .keras models and class_names.json metadata.
+
+====================================================================
+11. IMPORTANT FILES
+====================================================================
+
+In Plant-Disease-Detection-CV:
+
+- main_app.py
+  Streamlit application for predicting with the comparison models and showing model-comparison results.
+
+- train_model.py
+  Training pipeline for the expanded classifier.
+
+- dataset.py
+  Finds the class directories and creates image splits.
+
+- model_architectures.py
+  Defines the CNN baseline and pretrained model architectures with model-specific input preprocessing.
+
+- Plant_Disease_Detection.ipynb
+  Notebook entry point for the training workflow.
+
+- Model_Comparison.ipynb
+  Notebook for inspecting model comparison results, confusion matrices, and training curves.
+
+- compare_models.py
+  Trains/evaluates the compared architectures and records the common experiment.
+
+- plant_disease_model.keras
+  Saved expanded model for the primary MobileNetV2-based training pipeline.
+
+- class_names.json
+  Ordered class names and metadata including image size, color mode, normalization method, seed, class counts, split counts, and test metrics.
+
+- test_class_metrics.json
+  Per-class evaluation metrics for the primary model.
+
+- training_history.json
+  Training and validation history.
+
+- comparison/
+  Contains per-model saved classifiers, results, metrics, confusion matrices, training histories, predictions, comparison chart/report, and split manifest.
+
+- plant_disease_model.h5
+  Legacy model for the original three-class application. It does not contain 38 outputs.
+
+- requirements.txt
+  Python package dependencies.
+
+====================================================================
+12. HOW TO RUN THE PROJECT
+====================================================================
+
+Clone the expanded computer-vision repository:
+
+git clone https://github.com/RedDevil04-ankit/Plant-Disease-Detection-CV.git
+cd Plant-Disease-Detection-CV
+
+Create and activate a virtual environment (recommended):
+python3 -m venv .venv
+source .venv/bin/activate
+
+Install dependencies:
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+The default dataset location in the code is:
+~/Desktop/PlantVillage-Dataset/raw/color
+
+To inspect the dataset path and class structure:
+python3 train_model.py --inspect
+
+To train the primary expanded classifier:
+python3 train_model.py --dataset /path/to/PlantVillage-Dataset/raw/color --epochs 30
+
+Then run the app:
+streamlit run main_app.py
+
+The app expects the expanded .keras models and their matching class_names.json metadata. The primary model training command produces the main model. The comparison view and four-model predictions need the comparison artifacts produced by compare_models.py:
+
+python compare_models.py
+
+Training requires the PlantVillage dataset and can consume substantial CPU time and storage. The pretrained backbones may download ImageNet weights on the first run. See README.md for the exact requirements and local dataset setup.
+
+====================================================================
+13. LIMITATIONS AND FUTURE IMPROVEMENTS
+====================================================================
+
+Limitations:
+- PlantVillage's controlled images differ from real farm images.
+- A high held-out test score does not guarantee performance on new cameras, lighting conditions, leaf ages, backgrounds, or crop varieties.
+- The classifier only knows the classes represented in its training dataset. It may assign an unsupported plant or an unusual symptom to the closest known class.
+- The displayed maximum score is not necessarily calibrated confidence.
+- A single seeded train/validation/test split may not capture all sources of variation.
+- Similar-looking diseases can be difficult to distinguish from images alone.
+- The project is an educational decision-support prototype, not an authoritative diagnosis or pesticide recommendation system.
+
+Possible improvements:
+- Test on a separate field-collected dataset with diverse backgrounds and devices.
+- Add out-of-distribution and low-confidence warnings.
+- Calibrate prediction scores and report top-k classes.
+- Evaluate class-wise precision, recall, F1, and confusion matrices before deployment.
+- Test multiple random seeds or repeated splits.
+- Apply careful fine-tuning of selected backbone layers and compare against the frozen-backbone protocol.
+- Quantize or export a lightweight model for mobile or edge-device use.
+- Add explainability visualizations such as Grad-CAM to show image regions that influenced a prediction.
+- Include agricultural expert review and treatment guidance only from verified sources.
+
+====================================================================
+14. INTERVIEW EXPLANATION (SAMPLE)
+====================================================================
+
+"My project is a Plant Disease Prediction system that uses deep learning and computer vision to classify plant leaf images. The expanded version is trained on the 38-class PlantVillage dataset, covering both healthy leaves and multiple disease categories across different plants.
+
+I preprocess each image into RGB format and resize it to 128 by 128 pixels. For the main expanded model, I use transfer learning with an ImageNet-pretrained MobileNetV2 backbone. I freeze the feature extractor and train a dense classification head with dropout and a softmax output over all classes. I use training, validation, and test splits, class weights for imbalance, and early stopping based on validation loss.
+
+I also built a model-comparison experiment using MobileNetV3Large, MobileNetV2, EfficientNetB0, and DenseNet121 under a shared split and preprocessing protocol. I compare accuracy and macro F1, plus size and inference speed. The saved report shows DenseNet121 with the best test accuracy in that run, while MobileNetV3Large is selected by validation macro F1. The Streamlit interface allows users to upload a leaf image and view predictions from all four models.
+
+An important limitation is that PlantVillage images are relatively controlled, so performance on real farm photographs must be validated separately. I position the project as an educational early-screening aid rather than a substitute for expert plant diagnosis."
+
+====================================================================
+15. POSSIBLE INTERVIEW QUESTIONS
+====================================================================
+
+Q1. Why CNNs for plant disease detection?
+Because CNNs learn spatial visual patterns from images, such as colour changes, edges, spots, and lesions, without requiring manually engineered image features.
+
+Q2. What is transfer learning?
+It reuses visual representations learned by a model pretrained on a large dataset. In this project the pretrained feature extractor is frozen and a new classification head is trained for the plant classes.
+
+Q3. Why use a validation set?
+It guides model selection and early stopping without using the final test set to tune the model.
+
+Q4. Why report macro F1 as well as accuracy?
+Accuracy gives the overall correct fraction, while macro F1 weighs every class equally and can reveal weak performance on smaller classes.
+
+Q5. Why did you compare multiple architectures?
+To study the trade-off among predictive performance, model size, training cost, and inference speed under the same dataset split.
+
+Q6. Which model is best?
+Under the saved run, MobileNetV3Large is preferred by validation macro F1; DenseNet121 has the highest reported test accuracy and test macro F1. The best choice depends on whether selection is based on validation generalization, speed, or footprint.
+
+Q7. Does 97%+ test accuracy mean it will achieve that on any leaf photo?
+No. It is measured on held-out PlantVillage images. Real-world performance may be lower because field photographs differ from controlled data.
+
+Q8. What is overfitting and how do you limit it?
+Overfitting occurs when the model learns training-specific details that do not generalize. Dropout, a frozen pretrained encoder, a separate validation set, class weights, and early stopping are used in this workflow.
+
+Q9. What does softmax do?
+It converts output logits into a normalized set of class scores that sum to one. The application selects the class with the highest score.
+
+Q10. What is a confusion matrix?
+It counts true versus predicted classes and helps identify particular diseases that the model confuses.
+
+====================================================================
+16. FINAL SUMMARY
+====================================================================
+
+The project combines image preprocessing, convolutional neural networks, transfer learning, a multiclass classifier, model evaluation, architecture comparison, and a Streamlit application. Its main engineering value is an end-to-end workflow from image upload to prediction, with saved models, class-label metadata, and reproducible comparison artifacts.
+
+For interviews, emphasize the complete pipeline, explain why transfer learning and macro F1 were used, state the measured results exactly as recorded, and openly describe the limits of evaluating on PlantVillage data.
+
+Source of project-specific implementation details and recorded experiment results:
+https://github.com/RedDevil04-ankit/Plant-Disease-Detection-CV
+Legacy three-class version:
+https://github.com/RedDevil04-ankit/Plant-Disease-Detection
